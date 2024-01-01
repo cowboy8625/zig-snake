@@ -24,13 +24,13 @@ const Button = struct {
     color_bg: ray.Color = ray.RED,
     color_text: ray.Color = ray.WHITE,
     is_hovered: bool = false,
+    font_size: f32 = 40,
+    offset: f32 = 40,
 
     fn get_rect(self: *Self) ray.Rectangle {
-        const font_size = 40;
-        const text_size = ray.MeasureTextEx(ray.GetFontDefault(), self.text, font_size, 0);
-        const offset = 40;
-        const width = text_size.x + offset;
-        const height = text_size.y + offset;
+        const text_size = ray.MeasureTextEx(ray.GetFontDefault(), self.text, self.font_size, 0);
+        const width = text_size.x + self.offset;
+        const height = text_size.y + self.offset;
         const x = self.position.x - width / 2;
         const y = self.position.y - height / 2;
         return ray.Rectangle{ .x = x, .y = y, .width = width, .height = height };
@@ -48,61 +48,19 @@ const Button = struct {
     }
 
     fn draw(self: *Self) void {
-        const font_size = 40;
-        const text_size = ray.MeasureTextEx(ray.GetFontDefault(), self.text, font_size, 0);
-        const offset = 40;
-        const width = text_size.x + offset;
-        const height = text_size.y + offset;
-        const w = @as(c_int, @intFromFloat(width));
-        const h = @as(c_int, @intFromFloat(height));
-
-        const x = @as(c_int, @intFromFloat(self.position.x - width / 2));
-        const y = @as(c_int, @intFromFloat(self.position.y - height / 2));
+        const rect = self.get_rect();
         const color_bg = if (!self.is_hovered) self.color_bg else ray.BLUE;
-        ray.DrawRectangle(x, y, w, h, color_bg);
-
-        const x_text = (offset / 4) + x;
-        const y_text = (offset / 2) + y;
-        ray.DrawText(self.text, x_text, y_text, font_size, self.color_text);
-    }
-};
-
-const Head = struct {
-    position: ray.Vector2,
-
-    pub fn move_up(self: *Head, delta: f32) void {
-        self.position.y -= delta;
-        if (self.position.y < 0) {
-            self.position.y = SCREEN_HEIGHT / CELL_SIZE;
-        }
-    }
-
-    pub fn move_down(self: *Head, delta: f32) void {
-        self.position.y += delta;
-        if (self.position.y >= SCREEN_HEIGHT / CELL_SIZE) {
-            self.position.y = 0;
-        }
-    }
-
-    pub fn move_left(self: *Head, delta: f32) void {
-        self.position.x -= delta;
-        if (self.position.x < 0) {
-            self.position.x = SCREEN_WIDTH / CELL_SIZE;
-        }
-    }
-
-    pub fn move_right(self: *Head, delta: f32) void {
-        self.position.x += delta;
-        if (self.position.x >= SCREEN_WIDTH / CELL_SIZE) {
-            self.position.x = 0;
-        }
+        ray.DrawRectangleV(ray.Vector2{ .x = rect.x, .y = rect.y }, ray.Vector2{ .x = rect.width, .y = rect.height }, color_bg);
+        const x_text = (self.offset / 4) + rect.x;
+        const y_text = (self.offset / 2) + rect.y;
+        ray.DrawText(self.text, @as(c_int, @intFromFloat(x_text)), @as(c_int, @intFromFloat(y_text)), @as(c_int, @intFromFloat(self.font_size)), self.color_text);
     }
 };
 
 const Snake = struct {
     const Self = @This();
 
-    head: Head,
+    head: ray.Vector2,
     allocator: std.mem.Allocator,
 
     direction: Direction = Direction.Right,
@@ -111,14 +69,14 @@ const Snake = struct {
     length: usize = 5,
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .head = Head{ .position = ray.Vector2{ .x = 25, .y = 25 } },
+            .head = ray.Vector2{ .x = 25, .y = 25 },
             .allocator = allocator,
             .body = std.ArrayList(ray.Vector2).init(allocator),
         };
     }
 
     pub fn reset(self: *Self) void {
-        self.head = Head{ .position = ray.Vector2{ .x = 25, .y = 25 } };
+        self.head = ray.Vector2{ .x = 25, .y = 25 };
         self.direction = Direction.Right;
         self.length = 5;
         self.speed = 10.0;
@@ -135,18 +93,18 @@ const Snake = struct {
         }
 
         if (self.body.items.len == 0 and self.length > 0) {
-            try self.body.insert(0, self.head.position);
+            try self.body.insert(0, self.head);
         }
 
         if (self.body.items.len > 0) {
             const section = normalize(self.body.items[0]);
             const x1 = section.x;
             const y1 = section.y;
-            const current = normalize(self.head.position);
+            const current = normalize(self.head);
             const x2 = current.x;
             const y2 = current.y;
             if (x1 != x2 or y1 != y2) {
-                try self.body.insert(0, self.head.position);
+                try self.body.insert(0, self.head);
             }
         }
 
@@ -162,10 +120,30 @@ const Snake = struct {
 
         const delta = self.speed * ray.GetFrameTime();
         switch (self.direction) {
-            Direction.Up => self.head.move_up(delta),
-            Direction.Down => self.head.move_down(delta),
-            Direction.Left => self.head.move_left(delta),
-            Direction.Right => self.head.move_right(delta),
+            Direction.Up => {
+                self.head.y -= delta;
+                if (self.head.y < 0) {
+                    self.head.y = SCREEN_HEIGHT / CELL_SIZE;
+                }
+            },
+            Direction.Down => {
+                self.head.y += delta;
+                if (self.head.y >= SCREEN_HEIGHT / CELL_SIZE) {
+                    self.head.y = 0;
+                }
+            },
+            Direction.Left => {
+                self.head.x -= delta;
+                if (self.head.x < 0) {
+                    self.head.x = SCREEN_WIDTH / CELL_SIZE;
+                }
+            },
+            Direction.Right => {
+                self.head.x += delta;
+                if (self.head.x >= SCREEN_WIDTH / CELL_SIZE) {
+                    self.head.x = 0;
+                }
+            },
         }
     }
 
@@ -250,7 +228,7 @@ pub fn main() !void {
             try snake.update();
         }
 
-        const pos = normalize(snake.head.position);
+        const pos = normalize(snake.head);
 
         for (snake.body.items[1..]) |section| {
             const sec = normalize(section);
@@ -290,7 +268,6 @@ pub fn main() !void {
         }
 
         ray.ClearBackground(ray.RAYWHITE);
-        // ray.DrawText("Congrats! You created your first window!", 190, 200, 20, ray.LIGHTGRAY);
         //----------------------------------------------------------------------------------
     }
 }
